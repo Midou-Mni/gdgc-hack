@@ -1,81 +1,41 @@
-const nodemailer = require('nodemailer');
+const mongoose = require('mongoose');
 
-// Create a test transporter (for development)
-const createDevTransporter = () => {
-  return nodemailer.createTransport({
-    host: 'smtp.ethereal.email',
-    port: 587,
-    secure: false,
-    auth: {
-      user: process.env.EMAIL_USER || 'hope.windler@ethereal.email',
-      pass: process.env.EMAIL_PASS || 'ZE3ydesTBeXckrfAXV'
-    }
-  });
-};
-
-// Create a production transporter
-const createProdTransporter = () => {
-  return nodemailer.createTransport({
-    service: process.env.EMAIL_SERVICE || 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS
-    }
-  });
-};
-
-// Get the appropriate transporter based on environment
-const getTransporter = () => {
-  console.log('Initializing email transporter');
-  if (process.env.NODE_ENV === 'production') {
-    return createProdTransporter();
+const teamSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: [true, 'Team name is required'],
+    unique: true
+  },
+  teamCode: {
+    type: String,
+    required: [true, 'Team code is required'],
+    unique: true
+  },
+  teamLeader: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Participant'
+  },
+  participants: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Participant'
+  }],
+  status: {
+    type: String,
+    enum: ['Pending', 'Accepted', 'Rejected'],
+    default: 'Pending'
   }
-  return createDevTransporter();
-};
+}, {
+  timestamps: true
+});
 
-// Send verification email
-const sendVerificationEmail = async (email, token, fullName) => {
-  const transporter = getTransporter();
-  
-  // Construct verification URL
-  const baseURL = process.env.BASE_URL || 'http://localhost:3000';
-  const verificationURL = `${baseURL}/api/participants/verify-email/${token}`;
-  
-  console.log('Sending verification email to:', email);
-  console.log('Verification URL:', verificationURL);
-  
-  // Email content
-  const mailOptions = {
-    from: process.env.EMAIL_FROM || 'hope.windler@ethereal.email',
-    to: email,
-    subject: 'Hackathon Registration: Email Verification',
-    html: `
-      <h1>Email Verification</h1>
-      <p>Hello ${fullName},</p>
-      <p>Thank you for registering for our hackathon! Please verify your email by clicking the link below:</p>
-      <p><a href="${verificationURL}">Verify your email</a></p>
-      <p>This link will expire in 24 hours.</p>
-      <p>If you did not register for this event, please ignore this email.</p>
-    `
-  };
-  
-  try {
-    // Send email
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Verification email sent:', info.messageId);
-    
-    // For development - log email preview URL
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Preview URL:', nodemailer.getTestMessageUrl(info));
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error sending verification email:', error);
-    return false;
+// Pre-save validation for team size
+teamSchema.pre('save', function(next) {
+  if (this.participants && this.participants.length > 4) {
+    const error = new Error('Team cannot have more than 4 participants');
+    error.name = 'ValidationError';
+    return next(error);
   }
-};
+  next();
+});
 
-module.exports = {
-  sendVerificationEmail
-}; 
+module.exports = mongoose.model('Team', teamSchema); 
